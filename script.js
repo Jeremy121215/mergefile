@@ -1,311 +1,210 @@
-// 文件合并工具 - 主脚本
+// PDF-ZIP合并工具
 document.addEventListener('DOMContentLoaded', function() {
     // 状态管理
     const state = {
-        files: [], // 存储文件对象 {file, name, size, type, id}
-        totalSize: 0,
-        maxSize: 100 * 1024 * 1024, // 100MB
-        nextFileId: 1,
+        pdfFile: null,
+        zipFile: null,
         mergedBlob: null,
-        mergedFileName: ''
+        mergedFileName: '',
+        selectedExt: 'pdf'
     };
 
     // DOM元素引用
     const elements = {
-        fileInput: document.getElementById('fileInput'),
-        browseBtn: document.getElementById('browseBtn'),
-        dropZone: document.getElementById('dropZone'),
-        fileList: document.getElementById('sortableList'),
-        clearAllBtn: document.getElementById('clearAllBtn'),
-        addMoreBtn: document.getElementById('addMoreBtn'),
+        // PDF文件相关
+        pdfInput: document.getElementById('pdfInput'),
+        pdfDropZone: document.getElementById('pdfDropZone'),
+        browsePdfBtn: document.getElementById('browsePdfBtn'),
+        clearPdfBtn: document.getElementById('clearPdfBtn'),
+        pdfFileName: document.getElementById('pdfFileName'),
+        pdfFileSize: document.getElementById('pdfFileSize'),
+        pdfSizeValue: document.getElementById('pdfSizeValue'),
+        
+        // ZIP文件相关
+        zipInput: document.getElementById('zipInput'),
+        zipDropZone: document.getElementById('zipDropZone'),
+        browseZipBtn: document.getElementById('browseZipBtn'),
+        clearZipBtn: document.getElementById('clearZipBtn'),
+        zipFileName: document.getElementById('zipFileName'),
+        zipFileSize: document.getElementById('zipFileSize'),
+        zipSizeValue: document.getElementById('zipSizeValue'),
+        
+        // 输出设置
         outputName: document.getElementById('outputName'),
-        outputExt: document.getElementById('outputExt'),
-        customExtContainer: document.getElementById('customExtContainer'),
-        customExt: document.getElementById('customExt'),
-        extPreview: document.getElementById('extPreview'),
+        extButtons: document.querySelectorAll('.ext-btn'),
+        
+        // 内存信息
+        totalSizeValue: document.getElementById('totalSizeValue'),
+        
+        // 合并按钮
         mergeBtn: document.getElementById('mergeBtn'),
+        
+        // 结果区域
         resultSection: document.getElementById('resultSection'),
-        downloadBtn: document.getElementById('downloadBtn'),
-        newMergeBtn: document.getElementById('newMergeBtn'),
-        addSeparator: document.getElementById('addSeparator'),
-        addMetadata: document.getElementById('addMetadata'),
-        
-        // 统计信息元素
-        fileCount: document.getElementById('fileCount'),
-        totalSize: document.getElementById('totalSize'),
-        filesCount: document.getElementById('filesCount'),
-        combinedSize: document.getElementById('combinedSize'),
-        recommendedExt: document.getElementById('recommendedExt'),
-        
-        // 结果元素
         resultFileName: document.getElementById('resultFileName'),
         resultFileSize: document.getElementById('resultFileSize'),
-        resultFileCount: document.getElementById('resultFileCount'),
-        resultExt1: document.getElementById('resultExt1'),
-        resultExt2: document.getElementById('resultExt2')
+        downloadBtn: document.getElementById('downloadBtn'),
+        newMergeBtn: document.getElementById('newMergeBtn')
     };
 
     // 初始化
     function init() {
         setupEventListeners();
-        updateUI();
+        updateMergeButton();
+        updateMemoryInfo();
     }
 
     // 设置事件监听器
     function setupEventListeners() {
-        // 文件选择
-        elements.browseBtn.addEventListener('click', () => elements.fileInput.click());
-        elements.fileInput.addEventListener('change', handleFileSelect);
-        elements.addMoreBtn.addEventListener('click', () => elements.fileInput.click());
+        // PDF文件事件
+        elements.browsePdfBtn.addEventListener('click', () => elements.pdfInput.click());
+        elements.pdfInput.addEventListener('change', (e) => handleFileSelect(e, 'pdf'));
+        elements.clearPdfBtn.addEventListener('click', () => clearFile('pdf'));
         
-        // 拖放功能
-        elements.dropZone.addEventListener('dragover', handleDragOver);
-        elements.dropZone.addEventListener('dragleave', handleDragLeave);
-        elements.dropZone.addEventListener('drop', handleDrop);
+        // ZIP文件事件
+        elements.browseZipBtn.addEventListener('click', () => elements.zipInput.click());
+        elements.zipInput.addEventListener('change', (e) => handleFileSelect(e, 'zip'));
+        elements.clearZipBtn.addEventListener('click', () => clearFile('zip'));
         
-        // 清除所有文件
-        elements.clearAllBtn.addEventListener('click', clearAllFiles);
+        // 拖放事件
+        setupDragDrop('pdf');
+        setupDragDrop('zip');
         
-        // 输出设置
-        elements.outputExt.addEventListener('change', handleExtensionChange);
-        elements.customExt.addEventListener('input', handleCustomExtensionInput);
+        // 后缀选择事件
+        elements.extButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                elements.extButtons.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                state.selectedExt = e.target.dataset.ext;
+            });
+        });
         
-        // 合并功能
+        // 合并事件
         elements.mergeBtn.addEventListener('click', mergeFiles);
         
-        // 结果操作
+        // 结果事件
         elements.downloadBtn.addEventListener('click', downloadMergedFile);
         elements.newMergeBtn.addEventListener('click', startNewMerge);
+    }
+
+    // 设置拖放功能
+    function setupDragDrop(type) {
+        const dropZone = type === 'pdf' ? elements.pdfDropZone : elements.zipDropZone;
         
-        // 初始化Sortable拖拽
-        initSortable();
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect({ target: { files } }, type);
+            }
+        });
     }
 
     // 处理文件选择
-    function handleFileSelect(e) {
-        const files = Array.from(e.target.files);
-        addFiles(files);
-        elements.fileInput.value = ''; // 重置input
-    }
-
-    // 添加文件到列表
-    function addFiles(files) {
-        let addedCount = 0;
+    function handleFileSelect(e, type) {
+        const file = e.target.files[0];
+        if (!file) return;
         
-        files.forEach(file => {
-            // 检查文件大小限制
-            if (state.totalSize + file.size > state.maxSize) {
-                alert(`无法添加 ${file.name}：超过100MB总大小限制`);
-                return;
-            }
-            
-            // 检查是否已存在同名文件
-            const existingFile = state.files.find(f => f.name === file.name && f.size === file.size);
-            if (existingFile) {
-                alert(`文件 ${file.name} 已存在`);
-                return;
-            }
-            
-            // 创建文件对象
-            const fileObj = {
-                id: state.nextFileId++,
-                file: file,
-                name: file.name,
-                size: file.size,
-                type: getFileType(file.name),
-                ext: getFileExtension(file.name)
-            };
-            
-            state.files.push(fileObj);
-            state.totalSize += file.size;
-            addedCount++;
-        });
-        
-        if (addedCount > 0) {
-            updateUI();
-            updateFileList();
-            showNotification(`成功添加 ${addedCount} 个文件`);
-        }
-    }
-
-    // 处理拖放
-    function handleDragOver(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.dropZone.classList.add('drag-over');
-    }
-
-    function handleDragLeave(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.dropZone.classList.remove('drag-over');
-    }
-
-    function handleDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        elements.dropZone.classList.remove('drag-over');
-        
-        const files = Array.from(e.dataTransfer.files);
-        addFiles(files);
-    }
-
-    // 清除所有文件
-    function clearAllFiles() {
-        if (state.files.length === 0) return;
-        
-        if (confirm('确定要清除所有文件吗？')) {
-            state.files = [];
-            state.totalSize = 0;
-            updateUI();
-            updateFileList();
-            showNotification('已清除所有文件');
-        }
-    }
-
-    // 删除单个文件
-    function removeFile(id) {
-        const fileIndex = state.files.findIndex(f => f.id === id);
-        if (fileIndex === -1) return;
-        
-        const removedFile = state.files[fileIndex];
-        state.files.splice(fileIndex, 1);
-        state.totalSize -= removedFile.size;
-        
-        updateUI();
-        updateFileList();
-        showNotification(`已移除文件: ${removedFile.name}`);
-    }
-
-    // 初始化拖拽排序
-    function initSortable() {
-        new Sortable(elements.fileList, {
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            chosenClass: 'sortable-chosen',
-            onEnd: function(evt) {
-                // 更新文件顺序
-                const itemId = parseInt(evt.item.dataset.id);
-                const fromIndex = evt.oldIndex;
-                const toIndex = evt.newIndex;
-                
-                // 重新排序文件数组
-                const [movedFile] = state.files.splice(fromIndex, 1);
-                state.files.splice(toIndex, 0, movedFile);
-                
-                updateUI();
-                showNotification('已更新文件顺序');
-            }
-        });
-    }
-
-    // 更新文件列表UI
-    function updateFileList() {
-        elements.fileList.innerHTML = '';
-        
-        if (state.files.length === 0) {
-            elements.fileList.innerHTML = `
-                <div class="empty-state">
-                    <i class="fas fa-folder-open"></i>
-                    <p>还没有选择任何文件。请添加至少2个文件进行合并。</p>
-                </div>
-            `;
+        // 验证文件类型
+        if (type === 'pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            alert('请选择PDF文件');
             return;
         }
         
-        state.files.forEach(file => {
-            const fileItem = document.createElement('div');
-            fileItem.className = 'file-item';
-            fileItem.dataset.id = file.id;
-            
-            const sizeFormatted = formatFileSize(file.size);
-            const icon = getFileIcon(file.type);
-            
-            fileItem.innerHTML = `
-                <div class="file-name">
-                    <i class="fas ${icon} file-icon"></i>
-                    <span>${file.name}</span>
-                </div>
-                <div class="file-size">${sizeFormatted}</div>
-                <div class="file-type">${file.type.toUpperCase()}</div>
-                <div class="file-actions">
-                    <button class="remove-btn" data-id="${file.id}" title="删除文件">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            `;
-            
-            elements.fileList.appendChild(fileItem);
-        });
-        
-        // 为删除按钮添加事件监听器
-        document.querySelectorAll('.remove-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const fileId = parseInt(e.target.closest('.remove-btn').dataset.id);
-                removeFile(fileId);
-            });
-        });
-    }
-
-    // 更新UI状态
-    function updateUI() {
-        // 更新统计信息
-        elements.fileCount.textContent = state.files.length;
-        elements.totalSize.textContent = formatFileSize(state.totalSize);
-        elements.filesCount.textContent = state.files.length;
-        elements.combinedSize.textContent = formatFileSize(state.totalSize);
-        
-        // 更新推荐后缀
-        if (state.files.length > 0) {
-            const firstFileExt = state.files[0].ext || 'png';
-            elements.recommendedExt.textContent = `.${firstFileExt}`;
-        } else {
-            elements.recommendedExt.textContent = '.png';
+        if (type === 'zip') {
+            const validExts = ['.zip', '.rar', '.7z', '.tar', '.gz'];
+            const fileExt = '.' + file.name.toLowerCase().split('.').pop();
+            if (!validExts.includes(fileExt)) {
+                alert('请选择压缩文件（ZIP、RAR、7Z、TAR、GZ）');
+                return;
+            }
         }
         
-        // 启用/禁用合并按钮
-        elements.mergeBtn.disabled = state.files.length < 2;
+        // 更新状态
+        state[type + 'File'] = file;
         
-        // 更新合并按钮文本
-        if (state.files.length >= 2) {
-            elements.mergeBtn.innerHTML = `<i class="fas fa-compress-arrows-alt"></i> 合并 ${state.files.length} 个文件`;
+        // 更新UI
+        updateFileInfo(type, file);
+        updateClearButton(type);
+        updateMergeButton();
+        updateMemoryInfo();
+        
+        // 显示通知
+        showNotification(`已选择${type.toUpperCase()}文件: ${file.name}`);
+    }
+
+    // 更新文件信息
+    function updateFileInfo(type, file) {
+        const fileName = type === 'pdf' ? elements.pdfFileName : elements.zipFileName;
+        const fileSize = type === 'pdf' ? elements.pdfFileSize : elements.zipFileSize;
+        
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+    }
+
+    // 更新清除按钮
+    function updateClearButton(type) {
+        const clearBtn = type === 'pdf' ? elements.clearPdfBtn : elements.clearZipBtn;
+        clearBtn.style.display = 'block';
+    }
+
+    // 清除文件
+    function clearFile(type) {
+        state[type + 'File'] = null;
+        
+        // 重置输入
+        if (type === 'pdf') {
+            elements.pdfInput.value = '';
+            elements.pdfFileName.textContent = '未选择文件';
+            elements.pdfFileSize.textContent = '0 MB';
+            elements.clearPdfBtn.style.display = 'none';
         } else {
+            elements.zipInput.value = '';
+            elements.zipFileName.textContent = '未选择文件';
+            elements.zipFileSize.textContent = '0 MB';
+            elements.clearZipBtn.style.display = 'none';
+        }
+        
+        updateMergeButton();
+        updateMemoryInfo();
+    }
+
+    // 更新合并按钮状态
+    function updateMergeButton() {
+        elements.mergeBtn.disabled = !(state.pdfFile && state.zipFile);
+        
+        if (state.pdfFile && state.zipFile) {
             elements.mergeBtn.innerHTML = `<i class="fas fa-compress-arrows-alt"></i> 合并文件`;
         }
     }
 
-    // 处理扩展名变更
-    function handleExtensionChange() {
-        const selectedValue = elements.outputExt.value;
+    // 更新内存信息
+    function updateMemoryInfo() {
+        const pdfSize = state.pdfFile ? state.pdfFile.size : 0;
+        const zipSize = state.zipFile ? state.zipFile.size : 0;
+        const totalSize = pdfSize + zipSize;
         
-        if (selectedValue === 'custom') {
-            elements.customExtContainer.style.display = 'flex';
-            updateExtensionPreview();
-        } else {
-            elements.customExtContainer.style.display = 'none';
-            updateExtensionPreview(selectedValue);
-        }
-    }
-
-    // 处理自定义扩展名输入
-    function handleCustomExtensionInput() {
-        updateExtensionPreview();
-    }
-
-    // 更新扩展名预览
-    function updateExtensionPreview(ext = null) {
-        if (ext) {
-            elements.extPreview.textContent = ext;
-        } else {
-            const customExt = elements.customExt.value.trim().toLowerCase();
-            elements.extPreview.textContent = customExt || 'ext';
-        }
+        elements.pdfSizeValue.textContent = formatFileSize(pdfSize);
+        elements.zipSizeValue.textContent = formatFileSize(zipSize);
+        elements.totalSizeValue.textContent = formatFileSize(totalSize);
     }
 
     // 合并文件
     async function mergeFiles() {
-        if (state.files.length < 2) {
-            alert('请至少选择2个文件进行合并');
+        if (!state.pdfFile || !state.zipFile) {
+            alert('请选择PDF和ZIP文件');
             return;
         }
         
@@ -314,28 +213,24 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.mergeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 合并中...';
             elements.mergeBtn.disabled = true;
             
-            // 获取输出设置
+            // 获取输出文件名
             const outputName = elements.outputName.value.trim() || 'combined_file';
-            let outputExt = elements.outputExt.value;
-            
-            if (outputExt === 'custom') {
-                outputExt = elements.customExt.value.trim().toLowerCase() || 'bin';
-            }
-            
-            // 添加扩展名（如果没有点号）
-            if (!outputExt.startsWith('.')) {
-                outputExt = '.' + outputExt;
-            }
+            const outputExt = state.selectedExt;
             
             // 创建合并后的Blob
             const mergedBlob = await createMergedBlob();
             
             // 保存状态
             state.mergedBlob = mergedBlob;
-            state.mergedFileName = `${outputName}${outputExt}`;
+            state.mergedFileName = `${outputName}.${outputExt}`;
             
             // 显示结果
-            showResult(outputName, outputExt, mergedBlob.size);
+            elements.resultFileName.textContent = state.mergedFileName;
+            elements.resultFileSize.textContent = formatFileSize(mergedBlob.size);
+            elements.resultSection.style.display = 'block';
+            
+            // 滚动到结果区域
+            elements.resultSection.scrollIntoView({ behavior: 'smooth' });
             
             // 重置合并按钮
             elements.mergeBtn.innerHTML = '<i class="fas fa-compress-arrows-alt"></i> 合并文件';
@@ -355,70 +250,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 创建合并后的Blob
     async function createMergedBlob() {
-        const chunks = [];
+        // 读取PDF文件
+        const pdfArrayBuffer = await readFileAsArrayBuffer(state.pdfFile);
         
-        // 添加元数据（如果启用）
-        if (elements.addMetadata.checked) {
-            const metadata = createMetadata();
-            chunks.push(metadata);
+        // 读取ZIP文件
+        const zipArrayBuffer = await readFileAsArrayBuffer(state.zipFile);
+        
+        // 验证PDF文件头
+        const pdfHeader = new Uint8Array(pdfArrayBuffer, 0, 5);
+        const pdfHeaderStr = String.fromCharCode(...pdfHeader);
+        if (pdfHeaderStr !== '%PDF-') {
+            alert('PDF文件格式不正确，应以 %PDF- 开头');
+            throw new Error('Invalid PDF file');
         }
         
-        // 添加文件内容
-        for (let i = 0; i < state.files.length; i++) {
-            const file = state.files[i].file;
-            
-            // 读取文件内容
-            const arrayBuffer = await readFileAsArrayBuffer(file);
-            
-            // 添加分隔符（如果启用且不是第一个文件）
-            if (elements.addSeparator.checked && i > 0) {
-                const separator = createSeparator(i);
-                chunks.push(separator);
-            }
-            
-            chunks.push(arrayBuffer);
+        // 验证ZIP文件头（检查PK头）
+        const zipHeader = new Uint8Array(zipArrayBuffer, 0, 4);
+        if (zipHeader[0] !== 0x50 || zipHeader[1] !== 0x4B || zipHeader[2] !== 0x03 || zipHeader[3] !== 0x04) {
+            alert('ZIP文件格式不正确，应以PK头开头');
+            throw new Error('Invalid ZIP file');
         }
         
-        // 合并所有ArrayBuffer
-        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+        // 合并两个文件：PDF在前，ZIP在后
+        const totalLength = pdfArrayBuffer.byteLength + zipArrayBuffer.byteLength;
         const result = new Uint8Array(totalLength);
         
-        let offset = 0;
-        chunks.forEach(chunk => {
-            result.set(new Uint8Array(chunk), offset);
-            offset += chunk.byteLength;
-        });
+        // 添加PDF数据
+        result.set(new Uint8Array(pdfArrayBuffer), 0);
+        
+        // 添加ZIP数据
+        result.set(new Uint8Array(zipArrayBuffer), pdfArrayBuffer.byteLength);
         
         return new Blob([result]);
-    }
-
-    // 创建元数据
-    function createMetadata() {
-        const metadata = {
-            tool: 'File Combiner',
-            version: '1.0',
-            fileCount: state.files.length,
-            totalSize: state.totalSize,
-            timestamp: Date.now(),
-            files: state.files.map(f => ({
-                name: f.name,
-                size: f.size,
-                type: f.type
-            }))
-        };
-        
-        const metadataStr = JSON.stringify(metadata);
-        const encoder = new TextEncoder();
-        const metadataBinary = encoder.encode(`FMETA${metadataStr}ENDMETA`);
-        
-        return metadataBinary;
-    }
-
-    // 创建分隔符
-    function createSeparator(fileIndex) {
-        const separatorStr = `--- FILE ${fileIndex + 1} SEPARATOR ---`;
-        const encoder = new TextEncoder();
-        return encoder.encode(separatorStr);
     }
 
     // 读取文件为ArrayBuffer
@@ -429,30 +292,6 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.onerror = reject;
             reader.readAsArrayBuffer(file);
         });
-    }
-
-    // 显示合并结果
-    function showResult(fileName, fileExt, fileSize) {
-        // 更新结果信息
-        elements.resultFileName.textContent = `${fileName}${fileExt}`;
-        elements.resultFileSize.textContent = formatFileSize(fileSize);
-        elements.resultFileCount.textContent = state.files.length;
-        
-        // 更新使用提示
-        if (state.files.length >= 1) {
-            elements.resultExt1.textContent = fileExt;
-        }
-        
-        if (state.files.length >= 2) {
-            const secondFileExt = state.files[1].ext || 'zip';
-            elements.resultExt2.textContent = `.${secondFileExt}`;
-        }
-        
-        // 显示结果区域
-        elements.resultSection.style.display = 'block';
-        
-        // 滚动到结果区域
-        elements.resultSection.scrollIntoView({ behavior: 'smooth' });
     }
 
     // 下载合并后的文件
@@ -476,72 +315,15 @@ document.addEventListener('DOMContentLoaded', function() {
         // 隐藏结果区域
         elements.resultSection.style.display = 'none';
         
-        // 重置状态（可选，保留文件列表）
-        // state.mergedBlob = null;
-        // state.mergedFileName = '';
+        // 清除所有文件
+        clearFile('pdf');
+        clearFile('zip');
         
         // 滚动到顶部
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     // 辅助函数
-    function getFileType(filename) {
-        const ext = getFileExtension(filename).toLowerCase();
-        
-        const types = {
-            // 文档
-            'doc': 'document', 'docx': 'document', 'pdf': 'document', 'txt': 'document',
-            'rtf': 'document', 'md': 'document', 'csv': 'document', 'odt': 'document',
-            'ods': 'document', 'odp': 'document',
-            
-            // 图片
-            'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image',
-            'bmp': 'image', 'tiff': 'image', 'webp': 'image', 'svg': 'image',
-            'ico': 'image',
-            
-            // 音频
-            'mp3': 'audio', 'wav': 'audio', 'flac': 'audio', 'ogg': 'audio',
-            'aac': 'audio', 'm4a': 'audio',
-            
-            // 视频
-            'mp4': 'video', 'avi': 'video', 'mov': 'video', 'mkv': 'video',
-            'webm': 'video',
-            
-            // 压缩文件
-            'zip': 'archive', 'rar': 'archive', '7z': 'archive', 'tar': 'archive',
-            'gz': 'archive',
-            
-            // 代码
-            'js': 'code', 'html': 'code', 'css': 'code', 'py': 'code',
-            'java': 'code', 'cpp': 'code', 'json': 'code', 'xml': 'code',
-            
-            // 可执行文件
-            'exe': 'executable', 'msi': 'executable', 'dll': 'executable'
-        };
-        
-        return types[ext] || 'file';
-    }
-
-    function getFileIcon(type) {
-        const icons = {
-            'document': 'fa-file-word',
-            'image': 'fa-file-image',
-            'audio': 'fa-file-audio',
-            'video': 'fa-file-video',
-            'archive': 'fa-file-archive',
-            'code': 'fa-file-code',
-            'executable': 'fa-cogs',
-            'file': 'fa-file'
-        };
-        
-        return icons[type] || 'fa-file';
-    }
-
-    function getFileExtension(filename) {
-        const match = filename.match(/\.([a-zA-Z0-9]+)$/);
-        return match ? match[1].toLowerCase() : '';
-    }
-
     function formatFileSize(bytes) {
         if (bytes === 0) return '0 B';
         
@@ -568,9 +350,9 @@ document.addEventListener('DOMContentLoaded', function() {
             right: 20px;
             background: #2ecc71;
             color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            padding: 12px 20px;
+            border-radius: 5px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
             display: flex;
             align-items: center;
             gap: 10px;

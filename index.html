@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多文件合并工具 - 将任意数量文件合并为一个</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-file-export"></i> 多文件合并工具</h1>
+            <p class="subtitle">将任意数量的文件合并为一个文件，通过更改后缀名访问不同内容</p>
+            <div class="memory-info">
+                <div class="memory-item">
+                    <i class="fas fa-microchip"></i>
+                    <span>已选择文件：<strong id="fileCount">0</strong> 个</span>
+                </div>
+                <div class="memory-item">
+                    <i class="fas fa-hdd"></i>
+                    <span>总大小：<strong id="totalSize">0 MB</strong></span>
+                </div>
+                <div class="memory-item">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>最大支持：<strong>100 MB</strong></span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="app-container">
+                <!-- 文件上传区域 -->
+                <section class="upload-section">
+                    <h2><i class="fas fa-cloud-upload-alt"></i> 上传文件</h2>
+                    <div class="upload-zone" id="dropZone">
+                        <i class="fas fa-file-upload upload-icon"></i>
+                        <p>拖放文件到此处 或 <button class="btn btn-primary" id="browseBtn">选择多个文件</button></p>
+                        <p class="upload-hint">支持所有常见文件格式，建议第一个文件为图片格式以获得更好的伪装效果</p>
+                        <input type="file" id="fileInput" multiple style="display: none;">
+                    </div>
+                    
+                    <!-- 文件操作按钮 -->
+                    <div class="file-actions">
+                        <button class="btn btn-secondary" id="clearAllBtn">
+                            <i class="fas fa-trash-alt"></i> 清除所有文件
+                        </button>
+                        <button class="btn btn-secondary" id="addMoreBtn">
+                            <i class="fas fa-plus-circle"></i> 添加更多文件
+                        </button>
+                    </div>
+                </section>
+
+                <!-- 文件列表和顺序控制 -->
+                <section class="files-section">
+                    <div class="section-header">
+                        <h2><i class="fas fa-list-ol"></i> 文件列表与顺序</h2>
+                        <p class="section-description">拖拽文件项以调整顺序。第一个文件将作为默认文件（推荐使用图片格式）</p>
+                    </div>
+                    
+                    <div class="files-container">
+                        <div class="files-list-header">
+                            <div class="header-item file-name">文件名</div>
+                            <div class="header-item file-size">大小</div>
+                            <div class="header-item file-type">类型</div>
+                            <div class="header-item file-actions">操作</div>
+                        </div>
+                        
+                        <div class="sortable-list" id="sortableList">
+                            <!-- 文件项将通过JS动态添加 -->
+                            <div class="empty-state">
+                                <i class="fas fa-folder-open"></i>
+                                <p>还没有选择任何文件。请添加至少2个文件进行合并。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="files-summary">
+                            <div class="summary-item">
+                                <span>文件总数：</span>
+                                <strong id="filesCount">0</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>合并后大小：</span>
+                                <strong id="combinedSize">0 MB</strong>
+                            </div>
+                            <div class="summary-item">
+                                <span>推荐后缀：</span>
+                                <strong id="recommendedExt">.png</strong>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 输出设置 -->
+                <section class="output-section">
+                    <h2><i class="fas fa-cog"></i> 输出设置</h2>
+                    <div class="output-controls">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="outputName"><i class="fas fa-file-signature"></i> 输出文件名</label>
+                                <input type="text" id="outputName" placeholder="例如：my_combined_file" value="combined_file">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="outputExt"><i class="fas fa-code"></i> 输出文件后缀</label>
+                                <select id="outputExt">
+                                    <option value="png">.png (图片格式，推荐)</option>
+                                    <option value="jpg">.jpg (JPEG图片)</option>
+                                    <option value="pdf">.pdf (PDF文档)</option>
+                                    <option value="zip">.zip (压缩文件)</option>
+                                    <option value="mp3">.mp3 (音频文件)</option>
+                                    <option value="mp4">.mp4 (视频文件)</option>
+                                    <option value="txt">.txt (文本文件)</option>
+                                    <option value="bin">.bin (二进制文件)</option>
+                                    <option value="custom">自定义后缀</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group custom-ext-container" id="customExtContainer" style="display: none;">
+                                <label for="customExt"><i class="fas fa-edit"></i> 自定义后缀</label>
+                                <input type="text" id="customExt" placeholder="例如：data" maxlength="10">
+                                <span class="ext-preview">. <span id="extPreview">ext</span></span>
+                            </div>
+                        </div>
+                        
+                        <div class="advanced-settings">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="addSeparator" checked>
+                                    <i class="fas fa-layer-group"></i> 添加文件分隔符（增强兼容性）
+                                </label>
+                                <p class="help-text">在文件之间添加特殊分隔符，确保每个文件都能被正确识别</p>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="addMetadata" checked>
+                                    <i class="fas fa-info-circle"></i> 添加合并元数据
+                                </label>
+                                <p class="help-text">在文件开头添加合并信息，包括文件数量和大小</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="merge-controls">
+                        <button class="btn btn-merge" id="mergeBtn" disabled>
+                            <i class="fas fa-compress-arrows-alt"></i> 合并文件
+                        </button>
+                        <div class="merge-info">
+                            <p><i class="fas fa-lightbulb"></i> 提示：合并后，您可以通过更改文件后缀来访问不同的内容。例如，将后缀改为.png查看图片，改为.zip解压文件。</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 合并结果 -->
+                <section class="result-section" id="resultSection" style="display: none;">
+                    <h2><i class="fas fa-check-circle"></i> 合并完成！</h2>
+                    <div class="result-container">
+                        <div class="result-info">
+                            <div class="result-item">
+                                <i class="fas fa-file-download"></i>
+                                <div class="result-details">
+                                    <h3 id="resultFileName">combined_file.png</h3>
+                                    <p>文件大小: <span id="resultFileSize">0 MB</span></p>
+                                    <p>包含文件: <span id="resultFileCount">0</span> 个</p>
+                                </div>
+                            </div>
+                            
+                            <div class="result-actions">
+                                <button class="btn btn-success" id="downloadBtn">
+                                    <i class="fas fa-download"></i> 下载合并文件
+                                </button>
+                                <button class="btn btn-secondary" id="newMergeBtn">
+                                    <i class="fas fa-redo"></i> 开始新的合并
+                                </button>
+                            </div>
+                            
+                            <div class="result-tips">
+                                <h4><i class="fas fa-tips"></i> 使用提示：</h4>
+                                <ul>
+                                    <li>要访问第一个文件，请保持后缀为 <span class="ext-tag" id="resultExt1">.png</span></li>
+                                    <li>要访问第二个文件，请将后缀改为 <span class="ext-tag" id="resultExt2">.zip</span></li>
+                                    <li>您可以通过更改后缀来访问合并文件中的任何内容</li>
+                                    <li>某些程序可能需要您手动跳过文件开头才能正确识别</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <div class="footer-content">
+                <div class="footer-info">
+                    <h3><i class="fas fa-info-circle"></i> 工作原理</h3>
+                    <p>本工具将多个文件二进制拼接为一个文件。不同程序通过读取文件头部信息来识别格式，忽略多余数据。因此，通过更改文件后缀，您可以使用不同程序访问合并文件中的不同部分。</p>
+                </div>
+                <div class="footer-links">
+                    <a href="#"><i class="fab fa-github"></i> GitHub</a>
+                    <a href="#"><i class="fas fa-question-circle"></i> 帮助</a>
+                    <a href="#"><i class="fas fa-shield-alt"></i> 隐私政策</a>
+                </div>
+                <p class="copyright">© 2023 多文件合并工具 | 仅供学习研究使用</p>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 脚本 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
